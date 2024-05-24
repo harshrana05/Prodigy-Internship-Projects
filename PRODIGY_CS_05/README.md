@@ -18,7 +18,7 @@ This Python application provides a simple packet sniffer interface using the `tk
 2. Install `scapy` library: `pip install scapy`
 3. Install `Npcap` from the official website: [Npcap Downloads](https://nmap.org/npcap/)
 4. Clone or download the repository.
-5. Run the Python script `packet_sniffer.py`.
+5. Run the Python script `Packet_sniffer.py`.
 
 ## Usage
 1. Launch the application.
