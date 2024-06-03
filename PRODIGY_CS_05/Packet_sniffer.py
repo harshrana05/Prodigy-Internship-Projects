@@ -1,75 +1,86 @@
+from scapy.all import sniff, Raw
+from scapy.layers.inet import IP, TCP, UDP
+import logging
 import tkinter as tk
 from tkinter import scrolledtext
-from scapy.all import AsyncSniffer
-from tkinter import ttk
+from threading import Thread, Event
 
-sniffer = None  # Global variable to hold the sniffer instance
+# Configure logging
+logging.basicConfig(
+    filename='packet_sniffer.log',
+    level=logging.INFO,
+    format='%(asctime)s - %(message)s',
+)
 
-def start_sniffing():
-    global sniffer
+# Initialize the stop event
+stop_sniffing_event = Event()
+
+def packet_handler(packet):
+    if IP in packet:
+        ip_layer = packet[IP]
+        source_ip = ip_layer.src
+        dest_ip = ip_layer.dst
+        protocol = "Other"
+        
+        if TCP in packet:
+            protocol = "TCP"
+        elif UDP in packet:
+            protocol = "UDP"
+        
+        payload = packet[Raw].load if Raw in packet else "None"
+        
+        log_message = f"Source IP: {source_ip}\nDestination IP: {dest_ip}\nProtocol: {protocol}\nPayload: {payload}\n{'-' * 30}"
+        logging.info(log_message)
+        
+        if app:
+            app.update_display(log_message)
+
+def sniff_packets(app_instance):
+    global app
+    app = app_instance
+    stop_sniffing_event.clear()
+    sniff(prn=packet_handler, store=False, stop_filter=lambda x: stop_sniffing_event.is_set())
+
+class PacketSnifferApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Packet Sniffer")
+        
+        self.text_area = scrolledtext.ScrolledText(self.root, wrap=tk.WORD, width=80, height=20)
+        self.text_area.pack()
+        
+        self.start_button = tk.Button(self.root, text="Start Sniffing", command=self.start_sniffing)
+        self.start_button.pack()
+        
+        self.stop_button = tk.Button(self.root, text="Stop Sniffing", command=self.stop_sniffing, state=tk.DISABLED)
+        self.stop_button.pack()
+        
+        self.sniff_thread = None
     
-    def packet_callback(packet):
-        text_area.insert(tk.END, f"{packet.summary()}\n")
+    def update_display(self, message):
+        self.text_area.insert(tk.END, message + '\n')
+        self.text_area.yview(tk.END)
     
-    if sniffer is None:
-        sniffer = AsyncSniffer(prn=packet_callback)
-        sniffer.start()
-        text_area.insert(tk.END, "Started sniffing...\n")
-    else:
-        text_area.insert(tk.END, "Sniffer is already running.\n")
-
-def stop_sniffing():
-    global sniffer
+    def start_sniffing(self):
+        self.start_button.config(state=tk.DISABLED)
+        self.stop_button.config(state=tk.NORMAL)
+        self.sniff_thread = Thread(target=sniff_packets, args=(self,))
+        self.sniff_thread.start()
     
-    if sniffer is not None:
-        sniffer.stop()
-        sniffer = None
-        text_area.insert(tk.END, "Stopped sniffing.\n")
-    else:
-        text_area.insert(tk.END, "Sniffer is not running.\n")
+    def stop_sniffing(self):
+        stop_sniffing_event.set()
+        self.root.after(100, self.check_sniff_thread)
 
-# Create the main window
-root = tk.Tk()
-root.title("Packet Sniffer with Npcap")
+    def check_sniff_thread(self):
+        if self.sniff_thread.is_alive():
+            self.root.after(100, self.check_sniff_thread)
+        else:
+            self.start_button.config(state=tk.NORMAL)
+            self.stop_button.config(state=tk.DISABLED)
 
-# Set window size and position
-window_width = 900
-window_height = 700
-screen_width = root.winfo_screenwidth()
-screen_height = root.winfo_screenheight()
-x_coordinate = (screen_width - window_width) // 2
-y_coordinate = (screen_height - window_height) // 2
-root.geometry(f"{window_width}x{window_height}+{x_coordinate}+{y_coordinate}")
+app = None
 
-# Set custom style for the application
-style = ttk.Style()
-style.configure("TLabel", font=("Helvetica", 14))
-style.configure("TButton", font=("Helvetica", 12), padding=10)
-style.configure("TFrame", background="#f0f0f0")
-style.configure("TScrolledText", font=("Helvetica", 12))
-
-# Create and place widgets
-frame = ttk.Frame(root, padding=20, relief="raised", borderwidth=2)
-frame.pack(fill=tk.BOTH, expand=True)
-
-header_label = ttk.Label(frame, text="Packet Sniffer", font=("Helvetica", 24, "bold"))
-header_label.pack(pady=10)
-
-button_frame = ttk.Frame(frame)
-button_frame.pack(pady=10)
-
-start_button = ttk.Button(button_frame, text="Start Sniffing", command=start_sniffing)
-start_button.pack(side=tk.LEFT, padx=10)
-
-stop_button = ttk.Button(button_frame, text="Stop Sniffing", command=stop_sniffing)
-stop_button.pack(side=tk.LEFT, padx=10)
-
-text_area = scrolledtext.ScrolledText(frame, width=100, height=30, font=("Helvetica", 12))
-text_area.pack(pady=10, fill=tk.BOTH, expand=True)
-
-# Instructions label
-instructions_label = ttk.Label(frame, text="Click 'Start Sniffing' to begin packet capture. Click 'Stop Sniffing' to stop.")
-instructions_label.pack(pady=5)
-
-# Run the application
-root.mainloop()
+if __name__ == "__main__":
+    root = tk.Tk()
+    app_instance = PacketSnifferApp(root)
+    root.mainloop()
